@@ -1,8 +1,47 @@
+from elftools.elf.elffile import ELFFile
+import os
+import psutil
+
+def find_pid(process_name):
+    # Not very correct as they might be multiple processes with the same name
+    pids = []
+    for proc in psutil.process_iter(['pid', 'name']):
+        if process_name in proc.info['name']:
+            pids.append(proc.info['pid'])
+
+    if len(pids) == 1:
+        return pids[0]
+    return pids
+
+def get_executable_path(pid):
+    try:
+        # Path to the symbolic link of the executable in the /proc system
+        link_path = f'/proc/{pid}/exe'
+        executable_path = os.readlink(link_path)
+        return executable_path
+    except OSError as e:
+        raise Exception(f"Could not resolve executable path for PID {pid}: {str(e)}")
+
+def get_address(executable_path, symbol_name):
+    with open(executable_path, 'rb') as f:
+        elf = ELFFile(f)
+        symtab = elf.get_section_by_name('.symtab')  # Get the symbol table
+        if not symtab:
+            return None  # Symbol table not found
+
+        # Search for the symbol in the symbol table
+        for symbol in symtab.iter_symbols():
+            if symbol.name == symbol_name:
+                return symbol.entry.st_value  # Return the symbol address
+    return None
+
 class FunctionCaller:
 
       def call_function(d, function_name, *args):
         # Resolve the function address
-        function_address = d.memory[function_name]
+        pid = find_pid(function_name)
+        executable_path = get_executable_path(pid)
+        function_address = get_address(executable_path, function_name)
 
         if function_address is None:
           raise ValueError(f"Function '{function_name}' not found.")
