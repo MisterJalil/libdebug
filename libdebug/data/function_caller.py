@@ -54,13 +54,13 @@ class FunctionCaller:
 
             # Run the function and let it execute until it returns
             return_address = d.regs.rip
-            d.run()  #This method should be designed to continue execution until a stopping condition is met
+            d.run()  
 
             # Restore registers
             for reg, val in saved_registers.items():
                 setattr(d.regs, reg, val)
 
-            #return value from rax might be of interest
+            #return value from rax
             return_value = d.regs.rax
             return return_value            
         else:
