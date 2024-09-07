@@ -12,89 +12,56 @@ class FunctionCaller:
             # 32-bit architecture
             
             # Save current state
-            original_eip = d.regs.eip
-            original_esp = d.regs.esp
-            original_eax = d.regs.eax
-            original_ebx = d.regs.ebx
-            original_ecx = d.regs.ecx
-            original_edx = d.regs.edx
-            original_edi = d.regs.edi
-            original_esi = d.regs.esi
-            original_ebp = d.regs.ebp
+            saved_registers = {reg: getattr(d.regs, reg) for reg in ['eip', 'esp', 'eax', 'ebx', 'ecx', 'edx', 'edi', 'esi', 'ebp']}
+            d.regs.esp -= 4  #space for the return address
+            d.memory[d.regs.esp] = d.regs.eip  #call simulation pushing return address
             
-            
-            # Adjust stack for function call
-            for arg in reversed(args):
-              d.memory[d.regs.esp - 4] = arg  # Write argument to memory
-              d.regs.esp -= 4                        
-            
-            # Set EIP to the function address
             d.regs.eip = function_address
-            
-            # Execute the function call
-            d.step() # Temporary execution to the next instruction after adjusting the stack
-            
+
+            # Arguments pushed onto the stack
+            for arg in reversed(args):
+                d.regs.esp -= 4
+                d.memory[d.regs.esp] = arg
+
+            d.run()  # Execute the function until it returns
+
             # Restore state
-            d.regs.eip = original_eip
-            d.regs.esp = original_esp
-            d.regs.eax = original_eax
-            d.regs.ebx = original_ebx
-            d.regs.ecx = original_ecx
-            d.regs.edx = original_edx
-            d.regs.esi = original_esi
-            d.regs.edi = original_edi
-            d.regs.ebp = original_ebp
+            for reg, val in saved_registers.items():
+                setattr(d.regs, reg, val)
+
+            return_value = d.regs.eax
+            return return_value
             
         elif d.arch == "x86_64":
             # 64-bit architecture
             
             # Save current state
-            original_rip = d.regs.rip
-            original_rsp = d.regs.rsp
-            original_rax = d.regs.rax
-            original_rbx = d.regs.rbx
-            original_rcx = d.regs.rcx
-            original_rdx = d.regs.rdx
-            original_rdi = d.regs.rdi
-            original_rsi = d.regs.rsi
-            original_r8 = d.regs.r8
-            original_r9 = d.regs.r9
-            original_r10 = d.regs.r10
-            original_r11 = d.regs.r11
-            original_r12 = d.regs.r12
-            original_r13 = d.regs.r13
-            original_r14 = d.regs.r14
-            original_r15 = d.regs.r15
-            original_rbp = d.regs.rbp
+            saved_registers = {reg: getattr(d.regs, reg) for reg in ['rip', 'rsp', 'rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9', 'rax']}
 
-            
-            # Set up registers for function call 1 argument
-            d.regs.rdi = args[0] 
-           
-            # Set RIP to the function address
+            # Set up registers for function call
+            param_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
+            for i, arg in enumerate(args[:6]):
+                setattr(d.regs, param_registers[i], arg)
+
+            # Arguments beyond the first six must be pushed onto the stack in reversed order
+            for arg in reversed(args[6:]):
+                d.regs.rsp -= 8
+                d.memory[d.regs.rsp] = arg
+
+            # Set RIP to the function address and align the stack to a 16-byte boundary
             d.regs.rip = function_address
-            
-            # Execute the function call
-            d.step() # Temporary execution to the next instruction after modifying registers
-            
-            # Restore state
-            d.regs.rip = original_rip
-            d.regs.rsp = original_rsp
-            d.regs.rdi = original_rdi
-            d.regs.rsi = original_rsi
-            d.regs.rax = original_rax
-            d.regs.rbx = original_rbx
-            d.regs.rcx = original_rcx  
-            d.regs.rdx = original_rdx            
-            d.regs.r8 = original_r8
-            d.regs.r9 = original_r9
-            d.regs.r10 = original_r10
-            d.regs.r11 = original_r11
-            d.regs.r12 = original_r12
-            d.regs.r13 = original_r13
-            d.regs.r14 = original_r14
-            d.regs.r15 = original_r15
-            d.regs.rbp = original_rbp
-            
+            d.regs.rsp -= (d.regs.rsp % 16)
+
+            # Run the function and let it execute until it returns
+            return_address = d.regs.rip
+            d.run()  #This method should be designed to continue execution until a stopping condition is met
+
+            # Restore registers
+            for reg, val in saved_registers.items():
+                setattr(d.regs, reg, val)
+
+            #return value from rax might be of interest
+            return_value = d.regs.rax
+            return return_value            
         else:
             raise ValueError("Unsupported architecture: {}".format(d.arch))
