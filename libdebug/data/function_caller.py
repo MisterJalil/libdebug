@@ -20,9 +20,13 @@ class FunctionCaller:
             
         if function_address is None:
           raise ValueError(f"Function '{function_name}' not found.")
-        
+      
+        # Get the architecture
+        architecture = libcontext.platform
+        print(f"The architecture is: {architecture}")
+            
         # Check architecture
-        if d.arch == "x86":
+        if architecture == "x86":
             # 32-bit architecture
             
             # Save current state
@@ -53,7 +57,7 @@ class FunctionCaller:
             return_value = d.regs.eax
             return return_value
             
-        elif d.arch == "x86_64":
+        elif architecture == "x86_64":
             # 64-bit architecture
             
             # Save current state
