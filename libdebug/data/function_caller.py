@@ -1,48 +1,12 @@
-from elftools.elf.elffile import ELFFile
-import os
-import psutil
-
-def find_pid(process_name):
-    # Not very correct as they might be multiple processes with the same name
-    pids = []
-    for proc in psutil.process_iter(['pid', 'name']):
-        if process_name in proc.info['name']:
-            pids.append(proc.info['pid'])
-
-    if len(pids) == 1:
-        return pids[0]
-    return pids
-
-def get_executable_path(pid):
-    try:
-        # Path to the symbolic link of the executable in the /proc system
-        link_path = f'/proc/{pid}/exe'
-        executable_path = os.readlink(link_path)
-        return executable_path
-    except OSError as e:
-        raise Exception(f"Could not resolve executable path for PID {pid}: {str(e)}")
-
-def get_address(executable_path, symbol_name):
-    with open(executable_path, 'rb') as f:
-        elf = ELFFile(f)
-        symtab = elf.get_section_by_name('.symtab')  # Get the symbol table
-        if not symtab:
-            return None  # Symbol table not found
-
-        # Search for the symbol in the symbol table
-        for symbol in symtab.iter_symbols():
-            if symbol.name == symbol_name:
-                return symbol.entry.st_value  # Return the symbol address
-    return None
-
 class FunctionCaller:
 
       def call_function(d, function_name, *args):
         # Resolve the function address
-        pid = find_pid(function_name)
-        executable_path = get_executable_path(pid)
-        function_address = get_address(executable_path, function_name)
-
+        if isinstance(function_name, str):
+            function_address = d.memory.resolve_symbol(function_name)
+        elif isinstance(function_name, int):
+            function_address = function_name
+            
         if function_address is None:
           raise ValueError(f"Function '{function_name}' not found.")
         
@@ -52,8 +16,9 @@ class FunctionCaller:
             
             # Save current state
             saved_registers = {reg: getattr(d.regs, reg) for reg in ['eip', 'esp', 'eax', 'ebx', 'ecx', 'edx', 'edi', 'esi', 'ebp']}
-            d.regs.esp -= 4  #space for the return address
-            d.memory[d.regs.esp] = d.regs.eip  #call simulation pushing return address
+            d.regs.esp -= 1000 # Push 1000 bytes to avoid stack corruption
+            d.regs.esp -= 4  # Space for the return address
+            d.memory[d.regs.esp] = d.regs.eip  # Call simulation pushing return address
             
             d.regs.eip = function_address
 
@@ -62,8 +27,14 @@ class FunctionCaller:
                 d.regs.esp -= 4
                 d.memory[d.regs.esp] = arg
 
-            d.run()  # Execute the function until it returns
+            # Step through function execution
+            while True:
+                d.step()
+                if d.regs.eip == saved_registers['eip']:
+                    break  # Execute the function until it returns
 
+            # Restore the stack pointer after the function has finished
+            d.regs.esp += 1000  # Reclaim the 1000 bytes of stack space we reserved earlier
             # Restore state
             for reg, val in saved_registers.items():
                 setattr(d.regs, reg, val)
@@ -77,6 +48,9 @@ class FunctionCaller:
             # Save current state
             saved_registers = {reg: getattr(d.regs, reg) for reg in ['rip', 'rsp', 'rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9', 'rax']}
 
+            # Push 1000 bytes onto the stack
+            d.regs.rsp -= 1000
+            
             # Set up registers for function call
             param_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
             for i, arg in enumerate(args[:6]):
@@ -93,8 +67,14 @@ class FunctionCaller:
 
             # Run the function and let it execute until it returns
             return_address = d.regs.rip
-            d.run()  
+            # Step through the function execution
+            while True:
+                d.step()
+                if d.regs.rip == saved_registers['rip']:  # Execute the function until it returns
+                    break 
 
+            # Restore the stack pointer and saved registers after execution
+            d.regs.rsp += 1000  # Reclaim the stack space we pushed earlier
             # Restore registers
             for reg, val in saved_registers.items():
                 setattr(d.regs, reg, val)
