@@ -1,9 +1,20 @@
+import os
+from libdebug.utils.elf_utils import resolve_symbol
+from libdebug.utils.libcontext import LibContext
+
 class FunctionCaller:
 
       def call_function(d, function_name, *args):
+        # Get the executable path from the process ID
+        try:
+            # Read the symbolic link to get the executable path
+            executable_path = os.readlink(f'/proc/{d.pid}/exe')
+        except OSError as e:
+            raise Exception(f"Could not resolve executable path for PID {d.pid}: {str(e)}")
+            
         # Resolve the function address
         if isinstance(function_name, str):
-            function_address = d.memory.resolve_symbol(function_name)
+            function_address = resolve_symbol(executable_path, function_name)
         elif isinstance(function_name, int):
             function_address = function_name
             
