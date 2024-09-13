@@ -26,7 +26,7 @@ class FunctionCaller:
         print(f"The architecture is: {architecture}")
             
         # Check architecture
-        if architecture == "x86":
+        if architecture == "i386":
             # 32-bit architecture
             
             # Save current state
@@ -57,7 +57,7 @@ class FunctionCaller:
             return_value = d.regs.eax
             return return_value
             
-        elif architecture == "x86_64":
+        elif architecture == "amd64":
             # 64-bit architecture
             
             # Save current state
