@@ -1,10 +1,10 @@
 import os
 from libdebug.utils.elf_utils import resolve_symbol
-from libdebug.utils.libcontext import LibContext
+from libdebug.utils.libcontext import libcontext
 
 class FunctionCaller:
 
-      def call_function(d, function_name, *args):
+      def call_function(self, d, function_name, *args):
         # Get the executable path from the process ID
         try:
             # Read the symbolic link to get the executable path
@@ -15,14 +15,16 @@ class FunctionCaller:
         # Resolve the function address
         if isinstance(function_name, str):
             function_address = resolve_symbol(executable_path, function_name)
+            print(f"Resolved address for {function_name}: {hex(function_address)}")
         elif isinstance(function_name, int):
             function_address = function_name
+            print(f"Using provided address: {hex(function_address)}")
             
         if function_address is None:
           raise ValueError(f"Function '{function_name}' not found.")
       
         # Get the architecture
-        architecture = libcontext.platform
+        architecture = libcontext.arch
         print(f"The architecture is: {architecture}")
             
         # Check architecture
@@ -31,7 +33,10 @@ class FunctionCaller:
             
             # Save current state
             saved_registers = {reg: getattr(d.regs, reg) for reg in ['eip', 'esp', 'eax', 'ebx', 'ecx', 'edx', 'edi', 'esi', 'ebp']}
+            
             d.regs.esp -= 1000 # Push 1000 bytes to avoid stack corruption
+            d.memory.write(d.regs.esp, b'\x00' * 1000)
+            
             d.regs.esp -= 4  # Space for the return address
             d.memory[d.regs.esp] = d.regs.eip  # Call simulation pushing return address
             
@@ -65,6 +70,12 @@ class FunctionCaller:
 
             # Push 1000 bytes onto the stack
             d.regs.rsp -= 1000
+            d.memory.write(d.regs.rsp, b'\x00' * 1000) # Writing bytes to OO
+
+            # Align the stack to a 16-byte boundary
+            alignment = d.regs.rsp % 16
+            if alignment != 0:
+                d.regs.rsp -= alignment
             
             # Set up registers for function call
             param_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
@@ -78,10 +89,12 @@ class FunctionCaller:
 
             # Set RIP to the function address and align the stack to a 16-byte boundary
             d.regs.rip = function_address
-            d.regs.rsp -= (d.regs.rsp % 16)
 
-            # Run the function and let it execute until it returns
-            return_address = d.regs.rip
+            # Set a breakpoint at the return address
+            return_address = saved_registers['rip']
+            d.breakpoint(function_address)
+            d.cont()
+
             # Step through the function execution
             while True:
                 d.step()
@@ -89,7 +102,7 @@ class FunctionCaller:
                     break 
 
             # Restore the stack pointer and saved registers after execution
-            d.regs.rsp += 1000  # Reclaim the stack space we pushed earlier
+            d.regs.rsp += 1000 + alignment # Reclaim the stack space we pushed earlier
             # Restore registers
             for reg, val in saved_registers.items():
                 setattr(d.regs, reg, val)
