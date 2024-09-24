@@ -63,31 +63,38 @@ class FunctionCaller:
             d.regs.esp -= 1000 # Push 1000 bytes to avoid stack corruption
             d.memory.write(d.regs.esp, b'\x00' * 1000)
 
-            # Align stack
-            alignment = d.regs.rsp % 16
-            if alignment == 0:
-                d.regs.rsp -= 8
-            elif alignment != 8:
-                d.regs.rsp -= (16 - alignment)
-            
-            d.regs.esp -= 4  # Space for the return address
-            #d.memory[d.regs.esp] = b'd.regs.rip'  # Call simulation pushing return address
-            d.memory.write(d.regs.esp, struct.pack('<I', d.regs.rip))
-            
-
-            d.regs.rip = absolute_address
-
             # Arguments pushed onto the stack
             for arg in reversed(args):
                 d.regs.esp -= 4
                 #d.memory[d.regs.esp] = arg
-                d.memory.write(d.regs.rsp, struct.pack('<I', arg))
+                d.memory.write(d.regs.esp, struct.pack('<I', arg))
+            
+            # Align stack
+            alignment = d.regs.esp % 16
+            if alignment == 0:
+                d.regs.esp -= 8
+            elif alignment != 8:
+                d.regs.esp -= (16 - alignment)
+
+            print(f"ESP after pushing args: {hex(d.regs.esp)}")
+            print(f"Stack contents: {d.memory.read(d.regs.esp, 16)}")  # Read first 16 bytes of the stack
+
+            # Push return address onto the stack
+            return_address = saved_registers['rip']
+            d.regs.esp -= 4  # Space for the return address
+            d.memory.write(d.regs.esp, struct.pack('<I', return_address))
+
+            d.regs.rip = absolute_address
+            print(f"Function address set in RIP: {hex(d.regs.rip)}")
 
             # Step through function execution
-            while True:
+            while True:    
+                print(f"RIP before step: {hex(d.regs.rip)}")
+                print(f"ESP before step: {hex(d.regs.esp)}")
                 d.step()
-                print(f"Rax: {hex(d.regs.eax)}")
-                print(f"Instruction pointer: {hex(d.regs.rip)}")
+                print(f"RIP after step: {hex(d.regs.rip)}")
+                print(f"ESP after step: {hex(d.regs.esp)}")
+                print(f"RAX after step: {hex(d.regs.eax)}")
                 if d.regs.rip == saved_registers['rip']:
                     break  # Execute the function until it returns
             
