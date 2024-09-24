@@ -58,7 +58,7 @@ class FunctionCaller:
             # 32-bit architecture
             
             # Save current state
-            saved_registers = {reg: getattr(d.regs, reg) for reg in ['rip', 'esp', 'eax', 'ebx', 'ecx', 'edx', 'edi', 'esi', 'ebp']}
+            saved_registers = {reg: getattr(d.regs, reg) for reg in ['rip', 'esp', 'edi', 'edx', 'ecx', 'ebx', 'esi', 'ebp', 'eax']}
             
             d.regs.esp -= 1000 # Push 1000 bytes to avoid stack corruption
             d.memory.write(d.regs.esp, b'\x00' * 1000)
@@ -71,10 +71,11 @@ class FunctionCaller:
             
             # Align stack
             alignment = d.regs.esp % 16
-            if alignment == 0:
-                d.regs.esp -= 8
-            elif alignment != 8:
-                d.regs.esp -= (16 - alignment)
+            if alignment != 0:
+                adjustment = 16 - alignment
+                d.regs.esp -= adjustment  # Adjust stack for 16-byte alignment
+                print(f"Aligned ESP by adjusting {adjustment} bytes.")
+
 
             print(f"ESP after pushing args: {hex(d.regs.esp)}")
             print(f"Stack contents: {d.memory.read(d.regs.esp, 16)}")  # Read first 16 bytes of the stack
